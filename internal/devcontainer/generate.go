@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 )
 
 // Generate creates .devcontainer/ccdc/ feature.
@@ -181,7 +180,6 @@ curl -sf -X POST "http://host.docker.internal:${CCDC_PORT}/notify" \
 
 	return writeJSON(filepath.Join(hooksDir, "hooks.json"), hooks)
 }
-
 
 func writeJSON(path string, v any) error {
 	var buf bytes.Buffer
