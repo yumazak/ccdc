@@ -31,7 +31,7 @@ cd your-project
 ccdc init
 ```
 
-This creates `.devcontainer/ccdc/` with the feature and plugin files.
+This creates `.devcontainer/ccdc/` with the feature files.
 
 ### 2. Configure devcontainer.json
 
@@ -61,56 +61,26 @@ Inside the container, run:
 ccdc
 ```
 
-This is a wrapper for `claude --dangerously-skip-permissions` with the notification plugin attached.
-
-### 5. Enable host notifications (optional)
-
-On the host machine, in a separate terminal:
-
-```bash
-ccdc serve
-```
-
-When Claude Code stops, sends a notification, or requests permission, you'll get a macOS notification.
+This is a wrapper for `claude --dangerously-skip-permissions`.
 
 ## Generated Files
 
 ```
 .devcontainer/ccdc/
 ├── devcontainer-feature.json   # Feature definition (mounts, postStartCommand)
-├── install.sh                  # Creates ccdc user, installs Claude Code
-└── ccdc-plugin/
-    ├── .claude-plugin/
-    │   └── plugin.json         # Plugin metadata
-    └── hooks/
-        ├── hooks.json          # Hook event definitions (Stop, Notification, PermissionRequest)
-        └── notify.sh           # Sends hook events to host via HTTP
+└── install.sh                  # Creates ccdc user, installs Claude Code
 ```
 
 ## Configuration
 
-### Notification port
-
-The notification server defaults to port `5454`. To change it:
-
-```bash
-# Host
-ccdc serve --port 9999
-
-# Container (set before running ccdc)
-export CCDC_PORT=9999
-```
-
 ### Host settings sync
 
-The following files/directories from `~/.claude/` are automatically mounted into the container (read-only bind mount) and copied at startup:
+The following files/directories from `~/.claude/` are automatically mounted into the container and copied at startup:
 
-- `settings.json`
 - `CLAUDE.md`
 - `agents/`
 - `commands/`
 - `skills/`
-- `plugins/`
 - `projects/`
 
 Only items that exist on the host are mounted. Changes inside the container do not affect the host.
