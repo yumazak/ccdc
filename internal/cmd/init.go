@@ -36,9 +36,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := proxy.GenerateProxyDockerfile(cwd); err != nil {
 		return err
 	}
-	if err := proxy.GenerateProxyEntrypoint(cwd); err != nil {
-		return err
-	}
 	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag); err != nil {
 		return err
 	}

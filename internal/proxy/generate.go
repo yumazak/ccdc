@@ -28,19 +28,6 @@ func projectName(projectDir string) string {
 	return filepath.Base(projectDir)
 }
 
-// subnetIndex generates a stable index (1-254) from project name for subnet allocation
-func subnetIndex(name string) int {
-	var hash int
-	for _, c := range name {
-		hash = hash*31 + int(c)
-	}
-	idx := hash % 254
-	if idx < 0 {
-		idx = -idx
-	}
-	return idx + 1
-}
-
 func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error {
 	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
@@ -86,26 +73,8 @@ RUN xcaddy build --with github.com/caddyserver/forwardproxy=github.com/caddyserv
 
 FROM caddy:latest
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-
-RUN apk add --no-cache dnsmasq
-
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-EXPOSE 3128 53/udp
-
-ENTRYPOINT ["/entrypoint.sh"]
 `
 	return os.WriteFile(filepath.Join(proxyDir, "Dockerfile"), []byte(content), 0o644)
-}
-
-func GenerateProxyEntrypoint(projectDir string) error {
-	content := `#!/bin/sh
-dnsmasq --no-daemon --server=8.8.8.8 --server=8.8.4.4 --listen-address=0.0.0.0 --bind-interfaces &
-exec caddy run --config /etc/caddy/Caddyfile
-`
-	path := filepath.Join(projectDir, ".ccdc", "proxy", "entrypoint.sh")
-	return os.WriteFile(path, []byte(content), 0o755)
 }
 
 func GenerateDevDockerfile(projectDir string, docker bool) error {
@@ -178,9 +147,8 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      restricted:
-        ipv4_address: 172.%d.0.10
-      external:
+      - restricted
+      - external
     healthcheck:
       test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
       interval: 10s
@@ -220,15 +188,13 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       dockerfile: Dockerfile
     command: sleep infinity
     user: ccdc
-    dns:
-      - 172.28.0.10
     volumes:
-      - ..:/`+"%s"+`
+      - ..:%s
       - ~/.claude/skills:/etc/claude/skills:ro
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-    working_dir: /`+"%s"+`
+    working_dir: %s
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GH_TOKEN=${GITHUB_TOKEN}
@@ -238,7 +204,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
       - no_proxy=localhost,127.0.0.1,socket-proxy,proxy
-`, name, name)
+`, "/"+name, "/"+name)
 
 	if docker {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
@@ -257,9 +223,6 @@ networks:
   restricted:
     driver: bridge
     internal: true
-    ipam:
-      config:
-        - subnet: 172.28.0.0/24
   external:
     driver: bridge
 `)
