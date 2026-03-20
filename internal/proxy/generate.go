@@ -284,6 +284,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
     user: ccdc
     volumes:
       - ..:%s
+      - ../.ccdc:%s/.ccdc:ro
       - ~/.claude/skills:/etc/claude/skills:ro
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
@@ -301,7 +302,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - GIT_SSL_CAINFO=/etc/mitmproxy/mitmproxy-ca-cert.pem
-`, "/"+name, "/"+name, buildNoProxy(docker, joy))
+`, "/"+name, "/"+name, "/"+name, buildNoProxy(docker, joy))
 
 	if docker {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
