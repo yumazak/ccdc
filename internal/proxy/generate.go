@@ -173,8 +173,11 @@ RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
     printf '#!/bin/sh\nexec /home/ccdc/.local/bin/claude --dangerously-skip-permissions "$@"\n' > /usr/local/bin/ccdc && \
     chmod +x /usr/local/bin/ccdc
 
-# Trust mitmproxy CA certificate (copied from proxy volume at runtime)
-RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then cp /etc/mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && update-ca-certificates 2>/dev/null; fi' >> /home/ccdc/.bashrc
+# Trust mitmproxy CA certificate at login
+RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then sudo cp /etc/mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates 2>/dev/null; git config --global http.sslCAInfo /etc/mitmproxy/mitmproxy-ca-cert.pem; fi' >> /home/ccdc/.bashrc
+
+# Allow ccdc to run update-ca-certificates without password
+RUN echo 'ccdc ALL=(ALL) NOPASSWD: /usr/sbin/update-ca-certificates, /usr/bin/cp' >> /etc/sudoers.d/ccdc
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
@@ -279,6 +282,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - SSL_CERT_FILE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
+      - GIT_SSL_CAINFO=/etc/mitmproxy/mitmproxy-ca-cert.pem
 `, "/"+name, "/"+name)
 
 	if docker {
