@@ -77,7 +77,7 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 	return os.WriteFile(filepath.Join(proxyDir, "Dockerfile"), []byte(content), 0o644)
 }
 
-func GenerateDevDockerfile(projectDir string, docker bool) error {
+func GenerateDevDockerfile(projectDir string, docker bool, joy bool) error {
 	devDir := filepath.Join(projectDir, ".ccdc", "dev")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create dev directory: %w", err)
@@ -125,7 +125,14 @@ RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
 `)
 
-	fmt.Fprintf(&b, "WORKDIR /%s\n", name)
+	if joy {
+		b.WriteString(`
+# Install joy plugin
+RUN su - ccdc -c 'claude plugin marketplace add https://github.com/yumazak/joy && claude plugin install joy-hooks@joy'
+`)
+	}
+
+	fmt.Fprintf(&b, "\nWORKDIR /%s\n", name)
 
 	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(b.String()), 0o644)
 }
