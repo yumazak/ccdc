@@ -36,6 +36,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag, joyFlag); err != nil {
 		return err
 	}
+	if err := proxy.GenerateMiseToml(cwd); err != nil {
+		return err
+	}
 	if err := proxy.GenerateCompose(cwd, dockerFlag, joyFlag); err != nil {
 		return err
 	}
@@ -58,6 +61,8 @@ func printNextSteps(withDocker bool) {
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	step := 1
+	fmt.Printf("  %d. Edit .ccdc/dev/.mise.toml to add project tools (node, ruby, etc.)\n", step)
+	step++
 	fmt.Printf("  %d. Edit .ccdc/proxy/enforcer.py to customize access rules\n", step)
 	step++
 	if withDocker {

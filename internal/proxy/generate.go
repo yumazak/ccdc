@@ -182,6 +182,15 @@ RUN echo '[ -f /etc/gitconfig.host ] && [ ! -f ~/.gitconfig ] && cp /etc/gitconf
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
 `)
 
+	b.WriteString(`
+# Install mise and project tools
+RUN su - ccdc -c 'curl https://mise.run | sh'
+ENV PATH="/home/ccdc/.local/bin:${PATH}"
+COPY .mise.toml /home/ccdc/.mise.toml
+RUN chown ccdc:ccdc /home/ccdc/.mise.toml
+RUN su - ccdc -c 'cd ~ && mise install'
+`)
+
 	if joy {
 		b.WriteString(`
 # Install joy plugin
@@ -192,6 +201,24 @@ RUN su - ccdc -c 'claude plugin marketplace add https://github.com/yumazak/joy &
 	fmt.Fprintf(&b, "\nWORKDIR /%s\n", name)
 
 	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(b.String()), 0o644)
+}
+
+func GenerateMiseToml(projectDir string) error {
+	path := filepath.Join(projectDir, ".ccdc", "dev", ".mise.toml")
+	if _, err := os.Stat(path); err == nil {
+		return nil // already exists, don't overwrite
+	}
+
+	content := `# Add project-specific tools here
+# See https://mise.jdx.dev/ for available tools
+#
+# [tools]
+# node = "24.13.1"
+# pnpm = "10.29.3"
+# ruby = "3.3.6"
+# python = "3.12"
+`
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func GenerateCompose(projectDir string, docker bool, joy bool) error {
