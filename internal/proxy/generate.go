@@ -28,6 +28,19 @@ func projectName(projectDir string) string {
 	return filepath.Base(projectDir)
 }
 
+// subnetIndex generates a stable index (1-254) from project name for subnet allocation
+func subnetIndex(name string) int {
+	var hash int
+	for _, c := range name {
+		hash = hash*31 + int(c)
+	}
+	idx := hash % 254
+	if idx < 0 {
+		idx = -idx
+	}
+	return idx + 1
+}
+
 func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error {
 	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
@@ -166,7 +179,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - "host.docker.internal:host-gateway"
     networks:
       restricted:
-        ipv4_address: 172.28.0.10
+        ipv4_address: 172.%d.0.10
       external:
     healthcheck:
       test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
