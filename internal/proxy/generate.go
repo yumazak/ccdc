@@ -211,11 +211,6 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
     networks:
       - restricted
       - external
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen(u.Request('http://localhost:3128'), timeout=3)"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 `)
 
 	if docker {
@@ -294,8 +289,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
 	}
 
 	b.WriteString(`    depends_on:
-      proxy:
-        condition: service_healthy
+      - proxy
     networks:
       - restricted
 
