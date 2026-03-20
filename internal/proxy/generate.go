@@ -8,52 +8,47 @@ import (
 )
 
 var defaultDomains = []string{
-	".github.com",
-	".api.github.com",
-	".raw.githubusercontent.com",
-	".registry.npmjs.org",
-	".npm.pkg.github.com",
-	".rubygems.org",
-	".bundler.io",
-	".pypi.org",
-	".files.pythonhosted.org",
-	".claude.ai",
-	".platform.claude.com",
-	".api.anthropic.com",
-	".statsig.anthropic.com",
-	".sentry.io",
+	"github.com",
+	"api.github.com",
+	"raw.githubusercontent.com",
+	"registry.npmjs.org",
+	"npm.pkg.github.com",
+	"rubygems.org",
+	"bundler.io",
+	"pypi.org",
+	"files.pythonhosted.org",
+	"claude.ai",
+	"platform.claude.com",
+	"api.anthropic.com",
+	"statsig.anthropic.com",
+	"sentry.io",
 }
 
-func GenerateSquidConf(projectDir string, extraDomains []string) error {
+func GenerateCaddyfile(projectDir string, extraDomains []string) error {
 	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
 	domains := append([]string{}, defaultDomains...)
-	for _, d := range extraDomains {
-		if !strings.HasPrefix(d, ".") {
-			d = "." + d
-		}
-		domains = append(domains, d)
-	}
+	domains = append(domains, extraDomains...)
 
 	var b strings.Builder
-	b.WriteString("# Allowlist\n")
-	b.WriteString("acl allowlist dstdomain")
+	b.WriteString("{\n")
+	b.WriteString("\torder forward_proxy before respond\n")
+	b.WriteString("}\n\n")
+	b.WriteString(":3128 {\n")
+	b.WriteString("\tforward_proxy {\n")
+	b.WriteString("\t\tacl {\n")
 	for _, d := range domains {
-		fmt.Fprintf(&b, " %s", d)
+		fmt.Fprintf(&b, "\t\t\tallow %s\n", d)
 	}
-	b.WriteString("\n\n")
-	b.WriteString("# Allow HTTPS (CONNECT) to allowlisted domains\n")
-	b.WriteString("http_access allow CONNECT allowlist\n\n")
-	b.WriteString("# Allow HTTP to allowlisted domains\n")
-	b.WriteString("http_access allow allowlist\n\n")
-	b.WriteString("# Deny everything else\n")
-	b.WriteString("http_access deny all\n\n")
-	b.WriteString("http_port 3128\n")
+	b.WriteString("\t\t\tdeny all\n")
+	b.WriteString("\t\t}\n")
+	b.WriteString("\t}\n")
+	b.WriteString("}\n")
 
-	return os.WriteFile(filepath.Join(proxyDir, "squid.conf"), []byte(b.String()), 0o644)
+	return os.WriteFile(filepath.Join(proxyDir, "Caddyfile"), []byte(b.String()), 0o644)
 }
 
 func GenerateProxyDockerfile(projectDir string) error {
@@ -62,9 +57,13 @@ func GenerateProxyDockerfile(projectDir string) error {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
-	content := `FROM ubuntu/squid:latest
+	content := `FROM caddy:builder AS builder
+RUN xcaddy build --with github.com/caddyserver/forwardproxy=github.com/caddyserver/forwardproxy@caddy2
 
-RUN apt-get update && apt-get install -y dnsmasq && rm -rf /var/lib/apt/lists/*
+FROM caddy:latest
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+
+RUN apk add --no-cache dnsmasq
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -79,7 +78,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 func GenerateProxyEntrypoint(projectDir string) error {
 	content := `#!/bin/sh
 dnsmasq --no-daemon --server=8.8.8.8 --server=8.8.4.4 --listen-address=0.0.0.0 --bind-interfaces &
-exec squid -N -f /etc/squid/squid.conf
+exec caddy run --config /etc/caddy/Caddyfile
 `
 	path := filepath.Join(projectDir, ".devcontainer", "proxy", "entrypoint.sh")
 	return os.WriteFile(path, []byte(content), 0o755)
@@ -145,13 +144,15 @@ func GenerateCompose(projectDir string, docker bool) error {
       context: proxy
       dockerfile: Dockerfile
     volumes:
-      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       restricted:
         ipv4_address: 172.28.0.10
       external:
     healthcheck:
-      test: ["CMD", "squid", "-k", "check", "-f", "/etc/squid/squid.conf"]
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -206,7 +207,7 @@ func GenerateCompose(projectDir string, docker bool) error {
       - https_proxy=http://proxy:3128
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
-      - no_proxy=localhost,127.0.0.1,socket-proxy
+      - no_proxy=localhost,127.0.0.1,socket-proxy,proxy
 `)
 
 	if docker {
