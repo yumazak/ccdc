@@ -51,12 +51,11 @@ from mitmproxy import http, ctx
 #   "/foo/*"  - prefix match (anything starting with /foo/)
 #   "/foo"    - exact match
 RULES = {
-    # GitHub - edit paths to restrict to your repo
-    # Example: {"method": "POST", "path": "/YourOrg/YourRepo.git/git-receive-pack"}
+    # GitHub - GET only by default. Add your repo to allow push/pull:
+    # {"method": "POST", "path": "/YourOrg/YourRepo.git/git-upload-pack"},
+    # {"method": "POST", "path": "/YourOrg/YourRepo.git/git-receive-pack"},
     "github.com": [
         {"method": "GET"},
-        {"method": "POST", "path": "/**/git-upload-pack"},
-        {"method": "POST", "path": "/**/git-receive-pack"},
     ],
     "api.github.com": [
         {"method": "GET"},
