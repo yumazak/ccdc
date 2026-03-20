@@ -28,38 +28,94 @@ func projectName(projectDir string) string {
 	return filepath.Base(projectDir)
 }
 
-func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error {
+func GenerateEnforcer(projectDir string) error {
 	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
-	domains := append([]string{}, defaultDomains...)
-	domains = append(domains, extraDomains...)
+	name := projectName(projectDir)
 
-	var b strings.Builder
-	b.WriteString("{\n")
-	b.WriteString("\torder forward_proxy before respond\n")
-	b.WriteString("}\n\n")
+	content := fmt.Sprintf(`"""
+ccdc network policy enforcer for mitmproxy
+Edit RULES to customize access control. Hot-reloads on save.
+"""
+from mitmproxy import http, ctx
 
-	if joy {
-		b.WriteString(":50055 {\n")
-		b.WriteString("\treverse_proxy host.docker.internal:50055\n")
-		b.WriteString("}\n\n")
-	}
+# Domain allowlist with optional method/path restrictions
+# Format:
+#   "domain": "allow_all"                    - all methods/paths allowed
+#   "domain": [{"method": "GET"}]            - GET only, all paths
+#   "domain": [{"method": "GET", "path": "/api/*"}]  - GET on specific path
+#   "domain": [{"method": "POST", "path": "/exact"}] - POST on exact path
+#
+# Path matching:
+#   "/foo/*"  - prefix match (anything starting with /foo/)
+#   "/foo"    - exact match
+RULES = {
+    # GitHub - restrict push to this repo only
+    "github.com": [
+        {"method": "GET"},
+        {"method": "POST", "path": "/%s.git/git-upload-pack"},
+        {"method": "POST", "path": "/%s.git/git-receive-pack"},
+    ],
+    "api.github.com": [
+        {"method": "GET"},
+        {"method": "POST", "path": "/graphql"},
+    ],
+    "raw.githubusercontent.com": "allow_all",
 
-	b.WriteString(":3128 {\n")
-	b.WriteString("\tforward_proxy {\n")
-	b.WriteString("\t\tacl {\n")
-	for _, d := range domains {
-		fmt.Fprintf(&b, "\t\t\tallow %s\n", d)
-	}
-	b.WriteString("\t\t\tdeny all\n")
-	b.WriteString("\t\t}\n")
-	b.WriteString("\t}\n")
-	b.WriteString("}\n")
+    # Package registries
+    "registry.npmjs.org": "allow_all",
+    "npm.pkg.github.com": "allow_all",
+    "rubygems.org": "allow_all",
+    "bundler.io": "allow_all",
+    "pypi.org": "allow_all",
+    "files.pythonhosted.org": "allow_all",
 
-	return os.WriteFile(filepath.Join(proxyDir, "Caddyfile"), []byte(b.String()), 0o644)
+    # Claude Code
+    "claude.ai": "allow_all",
+    "platform.claude.com": "allow_all",
+    "api.anthropic.com": "allow_all",
+    "statsig.anthropic.com": "allow_all",
+    "sentry.io": "allow_all",
+}
+
+
+def _match_path(pattern, path):
+    if pattern.endswith("/*"):
+        return path.startswith(pattern[:-1])
+    return path == pattern
+
+
+def request(flow: http.HTTPFlow):
+    host = flow.request.pretty_host
+
+    rule = RULES.get(host)
+    if rule is None:
+        flow.response = http.Response.make(403, b"Blocked: domain not in allowlist")
+        ctx.log.warn(f"DENY {flow.request.method} {host}{flow.request.path}")
+        return
+
+    if rule == "allow_all":
+        ctx.log.info(f"ALLOW {flow.request.method} {host}{flow.request.path}")
+        return
+
+    for entry in rule:
+        if entry["method"] != flow.request.method:
+            continue
+        if "path" not in entry:
+            ctx.log.info(f"ALLOW {flow.request.method} {host}{flow.request.path}")
+            return
+        if _match_path(entry["path"], flow.request.path):
+            ctx.log.info(f"ALLOW {flow.request.method} {host}{flow.request.path}")
+            return
+
+    flow.response = http.Response.make(403, b"Blocked: method/path not allowed")
+    ctx.log.warn(f"DENY {flow.request.method} {host}{flow.request.path}")
+`, name, name)
+
+	return os.WriteFile(filepath.Join(proxyDir, "enforcer.py"), []byte(content), 0o644)
 }
 
 func GenerateProxyDockerfile(projectDir string) error {
@@ -68,11 +124,7 @@ func GenerateProxyDockerfile(projectDir string) error {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
-	content := `FROM caddy:builder AS builder
-RUN xcaddy build --with github.com/caddyserver/forwardproxy=github.com/caddyserver/forwardproxy@caddy2
-
-FROM caddy:latest
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+	content := `FROM mitmproxy/mitmproxy:latest
 `
 	return os.WriteFile(filepath.Join(proxyDir, "Dockerfile"), []byte(content), 0o644)
 }
@@ -121,6 +173,9 @@ RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
     printf '#!/bin/sh\nexec /home/ccdc/.local/bin/claude --dangerously-skip-permissions "$@"\n' > /usr/local/bin/ccdc && \
     chmod +x /usr/local/bin/ccdc
 
+# Trust mitmproxy CA certificate (copied from proxy volume at runtime)
+RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then cp /etc/mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && update-ca-certificates 2>/dev/null; fi' >> /home/ccdc/.bashrc
+
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
 `)
@@ -146,21 +201,21 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
 
 	b.WriteString(`services:
   proxy:
-    build:
-      context: proxy
-      dockerfile: Dockerfile
+    image: mitmproxy/mitmproxy:latest
+    command: mitmdump --listen-port 3128 -s /rules/enforcer.py
     volumes:
-      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./proxy/enforcer.py:/rules/enforcer.py:ro
+      - mitmproxy-certs:/home/mitmproxy/.mitmproxy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - restricted
       - external
     healthcheck:
-      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      test: ["CMD", "curl", "-f", "-x", "http://localhost:3128", "http://example.com", "-o", "/dev/null"]
       interval: 10s
       timeout: 3s
-      retries: 5
+      retries: 10
 `)
 
 	if docker {
@@ -201,6 +256,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
+      - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -211,6 +267,9 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
       - no_proxy=localhost,127.0.0.1,socket-proxy,proxy
+      - SSL_CERT_FILE=/etc/mitmproxy/mitmproxy-ca-cert.pem
+      - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
+      - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
 `, "/"+name, "/"+name)
 
 	if docker {
@@ -225,6 +284,9 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
         condition: service_healthy
     networks:
       - restricted
+
+volumes:
+  mitmproxy-certs:
 
 networks:
   restricted:

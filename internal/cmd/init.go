@@ -30,10 +30,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	if err := proxy.GenerateCaddyfile(cwd, nil, joyFlag); err != nil {
-		return err
-	}
-	if err := proxy.GenerateProxyDockerfile(cwd); err != nil {
+	if err := proxy.GenerateEnforcer(cwd); err != nil {
 		return err
 	}
 	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag, joyFlag); err != nil {
@@ -43,7 +40,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Created .ccdc/proxy/ (Caddy forward proxy + DNS)")
+	fmt.Println("Created .ccdc/proxy/enforcer.py (mitmproxy L7 policy)")
 	fmt.Println("Created .ccdc/dev/ (Claude Code)")
 	if dockerFlag {
 		fmt.Println("Created socket-proxy service (Docker access)")
@@ -61,7 +58,7 @@ func printNextSteps(withDocker bool) {
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	step := 1
-	fmt.Printf("  %d. Edit .ccdc/proxy/Caddyfile to add project-specific domains\n", step)
+	fmt.Printf("  %d. Edit .ccdc/proxy/enforcer.py to customize access rules\n", step)
 	step++
 	fmt.Printf("  %d. export GITHUB_TOKEN=$(gh auth token)\n", step)
 	step++
