@@ -8,10 +8,7 @@ import (
 	"github.com/yumazak/ccdc/internal/proxy"
 )
 
-var (
-	dockerFlag bool
-	joyFlag    bool
-)
+var joyFlag bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -20,7 +17,6 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
-	initCmd.Flags().BoolVar(&dockerFlag, "docker", false, "Add Docker access via socket-proxy")
 	initCmd.Flags().BoolVar(&joyFlag, "joy", false, "Add joy notification forwarding to host")
 }
 
@@ -33,31 +29,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := proxy.GenerateEnforcer(cwd); err != nil {
 		return err
 	}
-	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag, joyFlag); err != nil {
+	if err := proxy.GenerateDevDockerfile(cwd, joyFlag); err != nil {
 		return err
 	}
 	if err := proxy.GenerateMiseToml(cwd); err != nil {
 		return err
 	}
-	if err := proxy.GenerateCompose(cwd, dockerFlag, joyFlag); err != nil {
+	if err := proxy.GenerateCompose(cwd, joyFlag); err != nil {
 		return err
 	}
 
 	fmt.Println("Created .ccdc/proxy/enforcer.py (mitmproxy L7 policy)")
 	fmt.Println("Created .ccdc/dev/ (Claude Code)")
-	if dockerFlag {
-		fmt.Println("Created socket-proxy service (Docker access)")
-	}
 	if joyFlag {
 		fmt.Println("Created joy notification forwarding")
 	}
 	fmt.Println("Created .ccdc/compose.yaml")
 
-	printNextSteps(dockerFlag)
+	printNextSteps()
 	return nil
 }
 
-func printNextSteps(withDocker bool) {
+func printNextSteps() {
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	step := 1
@@ -65,10 +58,6 @@ func printNextSteps(withDocker bool) {
 	step++
 	fmt.Printf("  %d. Edit .ccdc/proxy/enforcer.py to customize access rules\n", step)
 	step++
-	if withDocker {
-		fmt.Printf("  %d. Start your project services: docker compose up -d\n", step)
-		step++
-	}
 	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml up -d --build\n", step)
 	step++
 	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml exec dev bash\n", step)
@@ -76,8 +65,4 @@ func printNextSteps(withDocker bool) {
 	fmt.Printf("  %d. gh auth login (first time only)\n", step)
 	step++
 	fmt.Printf("  %d. ccdc (alias for claude --dangerously-skip-permissions)\n", step)
-	if withDocker {
-		step++
-		fmt.Printf("  %d. docker compose -p <project> exec <service> <command>\n", step)
-	}
 }

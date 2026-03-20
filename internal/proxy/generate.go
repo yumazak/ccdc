@@ -103,7 +103,7 @@ def request(flow: http.HTTPFlow):
 	return os.WriteFile(filepath.Join(proxyDir, "enforcer.py"), []byte(content), 0o644)
 }
 
-func GenerateDevDockerfile(projectDir string, docker bool, joy bool) error {
+func GenerateDevDockerfile(projectDir string, joy bool) error {
 	devDir := filepath.Join(projectDir, ".ccdc", "dev")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create dev directory: %w", err)
@@ -126,21 +126,10 @@ RUN apt-get update && apt-get install -y \
     && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 `)
 
-	if docker {
-		b.WriteString(`
-# Install Docker CLI only (daemon runs on host via socket-proxy)
-RUN curl -fsSL https://get.docker.com | sh
-`)
-	}
-
 	b.WriteString(`
 # Create ccdc user
 RUN useradd -m -s /bin/bash ccdc
 `)
-
-	if docker {
-		b.WriteString("RUN usermod -aG docker ccdc\n")
-	}
 
 	b.WriteString(`
 # Install Claude Code
@@ -205,18 +194,15 @@ func GenerateMiseToml(projectDir string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func buildNoProxy(withDocker bool, withJoy bool) string {
+func buildNoProxy(withJoy bool) string {
 	noProxy := "localhost,127.0.0.1,proxy"
-	if withDocker {
-		noProxy += ",socket-proxy"
-	}
 	if withJoy {
 		noProxy += ",joy-proxy"
 	}
 	return noProxy
 }
 
-func GenerateCompose(projectDir string, docker bool, joy bool) error {
+func GenerateCompose(projectDir string, joy bool) error {
 	name := projectName(projectDir)
 
 	var b strings.Builder
@@ -236,31 +222,6 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - restricted
       - external
 `)
-
-	if docker {
-		b.WriteString(`
-  socket-proxy:
-    image: tecnativa/docker-socket-proxy
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      CONTAINERS: 1
-      EXEC: 1
-      ALLOW_START: 0
-      ALLOW_STOP: 0
-      ALLOW_RESTARTS: 0
-      IMAGES: 0
-      VOLUMES: 0
-      NETWORKS: 0
-      BUILD: 0
-      AUTH: 0
-      SECRETS: 0
-      SWARM: 0
-      POST: 1
-    networks:
-      - restricted
-`)
-	}
 
 	if joy {
 		b.WriteString(`
@@ -302,11 +263,8 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - GIT_SSL_CAINFO=/etc/mitmproxy/mitmproxy-ca-cert.pem
-`, "/"+name, "/"+name, "/"+name, buildNoProxy(docker, joy))
+`, "/"+name, "/"+name, "/"+name, buildNoProxy(joy))
 
-	if docker {
-		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
-	}
 	if joy {
 		b.WriteString("      - JOY_URL=http://joy-proxy:50055/hooks\n")
 	}
