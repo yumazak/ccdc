@@ -243,6 +243,19 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
 `)
 	}
 
+	if joy {
+		b.WriteString(`
+  joy-proxy:
+    image: caddy:latest
+    command: caddy reverse-proxy --from :50055 --to host.docker.internal:50055
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - restricted
+      - external
+`)
+	}
+
 	fmt.Fprintf(&b, `
   dev:
     build:
@@ -256,6 +269,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
+      - ~/.gitconfig:/home/ccdc/.gitconfig:ro
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
@@ -266,7 +280,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - https_proxy=http://proxy:3128
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
-      - no_proxy=localhost,127.0.0.1,socket-proxy,proxy
+      - no_proxy=localhost,127.0.0.1,socket-proxy,proxy,joy-proxy
       - SSL_CERT_FILE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
@@ -276,7 +290,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
 	}
 	if joy {
-		b.WriteString("      - JOY_URL=http://proxy:50055/hooks\n")
+		b.WriteString("      - JOY_URL=http://joy-proxy:50055/hooks\n")
 	}
 
 	b.WriteString(`    depends_on:
