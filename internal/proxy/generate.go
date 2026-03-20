@@ -263,6 +263,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
+      - ~/.gitconfig:/home/ccdc/.gitconfig
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
