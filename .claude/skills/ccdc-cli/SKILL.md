@@ -15,7 +15,6 @@ Guide agents through using the `ccdc` CLI to generate and manage sandboxed Claud
 - **Docker isolation** via `internal: true` networks (proxy-only egress)
 - **Tool management** via mise (node, ruby, python, etc.)
 - **Host settings sync** (`~/.claude/skills`, `agents`, `commands`, `CLAUDE.md`)
-- **Optional Docker access** via socket-proxy
 - **Optional joy notifications** via Caddy reverse proxy
 
 **Companion skill**: For creating or modifying `enforcer.py` rules (domain allowlists, method/path restrictions), use the `generate-enforcer-policy` skill.
@@ -88,18 +87,6 @@ ccdc                   # Start Claude Code (alias for claude --dangerously-skip-
 
 ## Workflow 2: Init with Options
 
-### Add Docker access
-
-```bash
-ccdc init --docker
-```
-
-Adds a `socket-proxy` service (tecnativa/docker-socket-proxy) that provides restricted Docker API access:
-- Allowed: `CONTAINERS`, `EXEC`, `POST`
-- Denied: `ALLOW_START`, `ALLOW_STOP`, `IMAGES`, `VOLUMES`, `NETWORKS`, `BUILD`
-
-Inside the container, Docker CLI uses `DOCKER_HOST=tcp://socket-proxy:2375`.
-
 ### Add joy notifications
 
 ```bash
@@ -107,12 +94,6 @@ ccdc init --joy
 ```
 
 Adds a `joy-proxy` service (Caddy reverse proxy) that forwards notifications to `host.docker.internal:50055`. Installs the joy plugin into Claude Code.
-
-### Both options
-
-```bash
-ccdc init --docker --joy
-```
 
 ---
 
@@ -169,9 +150,6 @@ Look for `DENY` and `ALLOW` lines to debug network access issues.
 │  - enforcer.py controls domain/method/path access   │
 │  - Connected to both restricted + external networks │
 │                                                     │
-│  [optional] socket-proxy (tecnativa)                │
-│  - Restricted Docker API access                     │
-│                                                     │
 │  [optional] joy-proxy (caddy)                       │
 │  - Notification forwarding to host                  │
 │                                                     │
@@ -222,7 +200,6 @@ Ubuntu 24.04 based image with:
 - Host `.gitconfig` copy on first login
 - Host `~/.claude/` settings sync on login
 - mise + project tools from `.mise.toml`
-- [Optional] Docker CLI
 - [Optional] joy plugin
 
 ### `.ccdc/dev/.mise.toml`
@@ -233,7 +210,6 @@ mise configuration for project tools. Preserved across `ccdc init` re-runs (won'
 
 Docker Compose file with services:
 - `proxy` (mitmproxy) — always present
-- `socket-proxy` (tecnativa) — with `--docker`
 - `joy-proxy` (caddy) — with `--joy`
 - `dev` — the development container
 
@@ -291,7 +267,7 @@ Expected behavior — the `internal: true` network has no external DNS. DNS reso
 
 | Task | Command |
 |------|---------|
-| Initialize project | `ccdc init [--docker] [--joy]` |
+| Initialize project | `ccdc init [--joy]` |
 | Build and start | `docker compose -f .ccdc/compose.yaml up -d --build` |
 | Connect to container | `docker compose -f .ccdc/compose.yaml exec dev bash` |
 | View proxy logs | `docker compose -f .ccdc/compose.yaml logs proxy -f` |
