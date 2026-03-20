@@ -251,6 +251,6 @@ networks:
     driver: bridge
 `)
 
-	path := filepath.Join(projectDir, ".ccdc", "docker-compose.yml")
+	path := filepath.Join(projectDir, ".ccdc", "compose.yaml")
 	return os.WriteFile(path, []byte(b.String()), 0o644)
 }

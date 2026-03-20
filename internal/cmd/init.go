@@ -54,7 +54,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if joyFlag {
 		fmt.Println("Created joy notification forwarding")
 	}
-	fmt.Println("Created .ccdc/docker-compose.yml")
+	fmt.Println("Created .ccdc/compose.yaml")
 
 	printNextSteps(dockerFlag)
 	return nil
@@ -72,9 +72,9 @@ func printNextSteps(withDocker bool) {
 		fmt.Printf("  %d. Start your project services: docker compose up -d\n", step)
 		step++
 	}
-	fmt.Printf("  %d. docker compose -f .ccdc/docker-compose.yml up -d --build\n", step)
+	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml up -d --build\n", step)
 	step++
-	fmt.Printf("  %d. docker compose -f .ccdc/docker-compose.yml exec dev bash\n", step)
+	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml exec dev bash\n", step)
 	step++
 	fmt.Printf("  %d. ccdc (alias for claude --dangerously-skip-permissions)\n", step)
 	if withDocker {
