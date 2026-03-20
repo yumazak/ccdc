@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	proxyFlag bool
-	dindFlag  bool
+	proxyFlag  bool
+	dockerFlag bool
 )
 
 var initCmd = &cobra.Command{
@@ -22,7 +22,7 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().BoolVar(&proxyFlag, "proxy", false, "Generate proxy (Caddy forward proxy) configuration")
-	initCmd.Flags().BoolVar(&dindFlag, "dind", false, "Use Docker-in-Docker for the dev container (use with --proxy)")
+	initCmd.Flags().BoolVar(&dockerFlag, "docker", false, "Add Docker access via socket-proxy (use with --proxy)")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -51,47 +51,45 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := proxy.GenerateProxyEntrypoint(cwd); err != nil {
 		return err
 	}
-	if err := proxy.GenerateDevDockerfile(cwd, dindFlag); err != nil {
+	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag); err != nil {
 		return err
 	}
-	if dindFlag {
-		if err := proxy.GenerateDevEntrypoint(cwd); err != nil {
-			return err
-		}
-	}
-	if err := proxy.GenerateCompose(cwd, dindFlag); err != nil {
+	if err := proxy.GenerateCompose(cwd, dockerFlag); err != nil {
 		return err
 	}
 
 	fmt.Println("Created .devcontainer/proxy/ (Caddy forward proxy + DNS)")
-	if dindFlag {
-		fmt.Println("Created .devcontainer/dev/ (Docker-in-Docker + Claude Code)")
-	} else {
-		fmt.Println("Created .devcontainer/dev/ (Claude Code)")
+	fmt.Println("Created .devcontainer/dev/ (Claude Code)")
+	if dockerFlag {
+		fmt.Println("Created socket-proxy service (Docker access)")
 	}
 	fmt.Println("Created .devcontainer/docker-compose.proxy.yml")
 
-	printNextSteps(true, dindFlag)
+	printNextSteps(true, dockerFlag)
 	return nil
 }
 
-func printNextSteps(withProxy, withDind bool) {
+func printNextSteps(withProxy, withDocker bool) {
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	step := 1
 	if withProxy {
-		fmt.Printf("  %d. Edit .devcontainer/proxy/allowlist.txt to add project-specific domains\n", step)
+		fmt.Printf("  %d. Edit .devcontainer/proxy/Caddyfile to add project-specific domains\n", step)
 		step++
 		fmt.Printf("  %d. export GITHUB_TOKEN=$(gh auth token)\n", step)
 		step++
+		if withDocker {
+			fmt.Printf("  %d. Start your project services: docker compose up -d\n", step)
+			step++
+		}
 		fmt.Printf("  %d. docker compose -f .devcontainer/docker-compose.proxy.yml up -d --build\n", step)
 		step++
-		fmt.Printf("  %d. docker compose -f .devcontainer/docker-compose.proxy.yml exec -u ccdc dev bash\n", step)
+		fmt.Printf("  %d. docker compose -f .devcontainer/docker-compose.proxy.yml exec dev bash\n", step)
 		step++
 		fmt.Printf("  %d. ccdc (alias for claude --dangerously-skip-permissions)\n", step)
-		if withDind {
+		if withDocker {
 			step++
-			fmt.Printf("  %d. docker compose up (inside the container, for your project services)\n", step)
+			fmt.Printf("  %d. docker compose exec <service> <command> (e.g. docker compose exec web bundle exec rspec)\n", step)
 		}
 	} else {
 		fmt.Printf("  %d. Add \"./ccdc\": {} to features in your devcontainer.json\n", step)

@@ -22,11 +22,6 @@ var defaultDomains = []string{
 	"api.anthropic.com",
 	"statsig.anthropic.com",
 	"sentry.io",
-	"registry-1.docker.io",
-	"auth.docker.io",
-	"production.cloudflare.docker.com",
-	"ghcr.io",
-	"pkg-containers.githubusercontent.com",
 }
 
 func GenerateCaddyfile(projectDir string, extraDomains []string) error {
@@ -86,63 +81,40 @@ exec caddy run --config /etc/caddy/Caddyfile
 	return os.WriteFile(path, []byte(content), 0o755)
 }
 
-func GenerateDevDockerfile(projectDir string, dind bool) error {
+func GenerateDevDockerfile(projectDir string, docker bool) error {
 	devDir := filepath.Join(projectDir, ".devcontainer", "dev")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create dev directory: %w", err)
 	}
 
-	var content string
-	if dind {
-		content = `FROM ubuntu:24.04
+	var b strings.Builder
+	b.WriteString(`FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y \
     git \
     curl \
     ca-certificates \
     sudo \
-    iptables \
-    fuse-overlayfs \
     && rm -rf /var/lib/apt/lists/*
+`)
 
-# Install Docker
+	if docker {
+		b.WriteString(`
+# Install Docker CLI only (daemon runs on host via socket-proxy)
 RUN curl -fsSL https://get.docker.com | sh
+`)
+	}
 
-# Create ccdc user with docker group access
-RUN useradd -m -s /bin/bash ccdc && \
-    usermod -aG docker ccdc
-
-# Install Claude Code
-RUN su - ccdc -c 'curl -fsSL https://claude.ai/install.sh | bash'
-
-# Create ccdc wrapper command
-RUN CLAUDE_BIN="/home/ccdc/.local/bin/claude" && \
-    printf '#!/bin/sh\nexec %s --dangerously-skip-permissions "$@"\n' "$CLAUDE_BIN" > /usr/local/bin/ccdc && \
-    chmod +x /usr/local/bin/ccdc
-
-# Copy /etc/claude/ to ~/.claude/ on bash login
-RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
-
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-WORKDIR /workspace
-
-ENTRYPOINT ["/entrypoint.sh"]
-`
-	} else {
-		content = `FROM ubuntu:24.04
-
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    ca-certificates \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
-
+	b.WriteString(`
 # Create ccdc user
 RUN useradd -m -s /bin/bash ccdc
+`)
 
+	if docker {
+		b.WriteString("RUN usermod -aG docker ccdc\n")
+	}
+
+	b.WriteString(`
 # Install Claude Code
 RUN su - ccdc -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
@@ -155,36 +127,12 @@ RUN CLAUDE_BIN="/home/ccdc/.local/bin/claude" && \
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
 
 WORKDIR /workspace
-`
-	}
-	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(content), 0o644)
+`)
+
+	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(b.String()), 0o644)
 }
 
-func GenerateDevEntrypoint(projectDir string) error {
-	devDir := filepath.Join(projectDir, ".devcontainer", "dev")
-	if err := os.MkdirAll(devDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create dev directory: %w", err)
-	}
-
-	content := `#!/bin/sh
-# Start Docker daemon in background
-dockerd --storage-driver=fuse-overlayfs &
-
-# Wait for Docker daemon to be ready
-while ! docker info >/dev/null 2>&1; do
-    sleep 1
-done
-
-# Enable multi-platform support (amd64 on arm64 etc.)
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes 2>/dev/null || true
-
-# Execute CMD as ccdc user
-exec su - ccdc -c "$*"
-`
-	return os.WriteFile(filepath.Join(devDir, "entrypoint.sh"), []byte(content), 0o755)
-}
-
-func GenerateCompose(projectDir string, dind bool) error {
+func GenerateCompose(projectDir string, docker bool) error {
 	var b strings.Builder
 
 	b.WriteString(`services:
@@ -203,24 +151,41 @@ func GenerateCompose(projectDir string, dind bool) error {
       interval: 10s
       timeout: 3s
       retries: 5
+`)
 
+	if docker {
+		b.WriteString(`
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      EXEC: 1
+      ALLOW_START: 0
+      ALLOW_STOP: 0
+      ALLOW_RESTARTS: 0
+      IMAGES: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      BUILD: 0
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+      POST: 1
+    networks:
+      - restricted
+`)
+	}
+
+	b.WriteString(`
   dev:
     build:
       context: dev
       dockerfile: Dockerfile
-`)
-
-	b.WriteString("    command: sleep infinity\n")
-	if !dind {
-		b.WriteString("    user: ccdc\n")
-	}
-
-	if dind {
-		b.WriteString("    privileged: true\n")
-		b.WriteString("    platform: linux/amd64\n")
-	}
-
-	b.WriteString(`    dns:
+    command: sleep infinity
+    user: ccdc
+    dns:
       - 172.28.0.10
     volumes:
       - ..:/workspace
@@ -237,8 +202,14 @@ func GenerateCompose(projectDir string, dind bool) error {
       - https_proxy=http://proxy:3128
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
-      - no_proxy=localhost,127.0.0.1
-    depends_on:
+      - no_proxy=localhost,127.0.0.1,socket-proxy
+`)
+
+	if docker {
+		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
+	}
+
+	b.WriteString(`    depends_on:
       proxy:
         condition: service_healthy
     networks:
