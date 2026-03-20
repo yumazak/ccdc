@@ -181,8 +181,11 @@ RUN echo 'ccdc ALL=(ALL) NOPASSWD: /usr/sbin/update-ca-certificates, /usr/bin/cp
 
 # Git credential helper: use GITHUB_TOKEN for authentication
 RUN printf '#!/bin/sh\necho "username=x-access-token\npassword=$GITHUB_TOKEN"\n' > /usr/local/bin/git-credential-ccdc && \
-    chmod +x /usr/local/bin/git-credential-ccdc && \
-    git config --system credential.helper /usr/local/bin/git-credential-ccdc
+    chmod +x /usr/local/bin/git-credential-ccdc
+
+# Git config: include host gitconfig + credential helper
+RUN echo '[include]\n\tpath = /home/ccdc/.gitconfig.host\n[credential]\n\thelper = /usr/local/bin/git-credential-ccdc' > /home/ccdc/.gitconfig && \
+    chown ccdc:ccdc /home/ccdc/.gitconfig
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
@@ -272,7 +275,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-      - ~/.gitconfig:/etc/gitconfig:ro
+      - ~/.gitconfig:/home/ccdc/.gitconfig.host:ro
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
