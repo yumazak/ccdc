@@ -175,6 +175,9 @@ RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then sudo cp /etc/mitm
 RUN echo 'ccdc ALL=(ALL) NOPASSWD: /usr/sbin/update-ca-certificates, /usr/bin/cp' >> /etc/sudoers.d/ccdc
 
 
+# Copy host gitconfig on login (if not already present)
+RUN echo '[ -f /etc/gitconfig.host ] && [ ! -f ~/.gitconfig ] && cp /etc/gitconfig.host ~/.gitconfig' >> /home/ccdc/.bashrc
+
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
 `)
@@ -263,7 +266,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-      - ~/.gitconfig:/home/ccdc/.gitconfig
+      - ~/.gitconfig:/etc/gitconfig.host:ro
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
