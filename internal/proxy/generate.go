@@ -24,7 +24,7 @@ var defaultDomains = []string{
 	"sentry.io",
 }
 
-func GenerateCaddyfile(projectDir string, extraDomains []string) error {
+func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error {
 	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
@@ -37,6 +37,13 @@ func GenerateCaddyfile(projectDir string, extraDomains []string) error {
 	b.WriteString("{\n")
 	b.WriteString("\torder forward_proxy before respond\n")
 	b.WriteString("}\n\n")
+
+	if joy {
+		b.WriteString(":50055 {\n")
+		b.WriteString("\treverse_proxy host.docker.internal:50055\n")
+		b.WriteString("}\n\n")
+	}
+
 	b.WriteString(":3128 {\n")
 	b.WriteString("\tforward_proxy {\n")
 	b.WriteString("\t\tacl {\n")
@@ -135,7 +142,7 @@ WORKDIR /workspace
 	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(b.String()), 0o644)
 }
 
-func GenerateCompose(projectDir string, docker bool) error {
+func GenerateCompose(projectDir string, docker bool, joy bool) error {
 	var b strings.Builder
 
 	b.WriteString(`services:
@@ -212,6 +219,9 @@ func GenerateCompose(projectDir string, docker bool) error {
 
 	if docker {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
+	}
+	if joy {
+		b.WriteString("      - JOY_URL=http://proxy:50055/hooks\n")
 	}
 
 	b.WriteString(`    depends_on:

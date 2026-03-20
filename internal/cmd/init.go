@@ -8,7 +8,10 @@ import (
 	"github.com/yumazak/ccdc/internal/proxy"
 )
 
-var dockerFlag bool
+var (
+	dockerFlag bool
+	joyFlag    bool
+)
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -18,6 +21,7 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().BoolVar(&dockerFlag, "docker", false, "Add Docker access via socket-proxy")
+	initCmd.Flags().BoolVar(&joyFlag, "joy", false, "Add joy notification forwarding to host")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -26,7 +30,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	if err := proxy.GenerateCaddyfile(cwd, nil); err != nil {
+	if err := proxy.GenerateCaddyfile(cwd, nil, joyFlag); err != nil {
 		return err
 	}
 	if err := proxy.GenerateProxyDockerfile(cwd); err != nil {
@@ -38,7 +42,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := proxy.GenerateDevDockerfile(cwd, dockerFlag); err != nil {
 		return err
 	}
-	if err := proxy.GenerateCompose(cwd, dockerFlag); err != nil {
+	if err := proxy.GenerateCompose(cwd, dockerFlag, joyFlag); err != nil {
 		return err
 	}
 
@@ -46,6 +50,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("Created .devcontainer/dev/ (Claude Code)")
 	if dockerFlag {
 		fmt.Println("Created socket-proxy service (Docker access)")
+	}
+	if joyFlag {
+		fmt.Println("Created joy notification forwarding")
 	}
 	fmt.Println("Created .devcontainer/docker-compose.proxy.yml")
 
