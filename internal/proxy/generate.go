@@ -8,58 +8,63 @@ import (
 )
 
 var defaultDomains = []string{
-	"github.com",
-	"api.github.com",
-	"raw.githubusercontent.com",
-	"registry.npmjs.org",
-	"npm.pkg.github.com",
-	"rubygems.org",
-	"bundler.io",
-	"pypi.org",
-	"files.pythonhosted.org",
-	"claude.ai",
-	"platform.claude.com",
-	"api.anthropic.com",
-	"statsig.anthropic.com",
-	"sentry.io",
+	".github.com",
+	".api.github.com",
+	".raw.githubusercontent.com",
+	".registry.npmjs.org",
+	".npm.pkg.github.com",
+	".rubygems.org",
+	".bundler.io",
+	".pypi.org",
+	".files.pythonhosted.org",
+	".claude.ai",
+	".platform.claude.com",
+	".api.anthropic.com",
+	".statsig.anthropic.com",
+	".sentry.io",
 }
 
-func GenerateCaddyfile(projectDir string, extraDomains []string) error {
+func GenerateSquidConf(projectDir string, extraDomains []string) error {
 	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
 	domains := append([]string{}, defaultDomains...)
-	domains = append(domains, extraDomains...)
+	for _, d := range extraDomains {
+		if !strings.HasPrefix(d, ".") {
+			d = "." + d
+		}
+		domains = append(domains, d)
+	}
 
 	var b strings.Builder
-	b.WriteString("{\n")
-	b.WriteString("\torder forward_proxy before respond\n")
-	b.WriteString("}\n\n")
-	b.WriteString(":3128 {\n")
-	b.WriteString("\tforward_proxy {\n")
-	b.WriteString("\t\tacl {\n")
+	b.WriteString("# Allowlist\n")
+	b.WriteString("acl allowlist dstdomain")
 	for _, d := range domains {
-		fmt.Fprintf(&b, "\t\t\tallow %s\n", d)
+		fmt.Fprintf(&b, " %s", d)
 	}
-	b.WriteString("\t\t\tdeny all\n")
-	b.WriteString("\t\t}\n")
-	b.WriteString("\t}\n")
-	b.WriteString("}\n")
+	b.WriteString("\n\n")
+	b.WriteString("# Allow HTTPS (CONNECT) to allowlisted domains\n")
+	b.WriteString("http_access allow CONNECT allowlist\n\n")
+	b.WriteString("# Allow HTTP to allowlisted domains\n")
+	b.WriteString("http_access allow allowlist\n\n")
+	b.WriteString("# Deny everything else\n")
+	b.WriteString("http_access deny all\n\n")
+	b.WriteString("http_port 3128\n")
 
-	path := filepath.Join(proxyDir, "Caddyfile")
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	return os.WriteFile(filepath.Join(proxyDir, "squid.conf"), []byte(b.String()), 0o644)
 }
 
 func GenerateProxyDockerfile(projectDir string) error {
-	content := `FROM caddy:builder AS builder
-RUN xcaddy build --with github.com/caddyserver/forwardproxy=github.com/caddyserver/forwardproxy@caddy2
+	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
+	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create proxy directory: %w", err)
+	}
 
-FROM caddy:latest
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+	content := `FROM ubuntu/squid:latest
 
-RUN apk add --no-cache dnsmasq
+RUN apt-get update && apt-get install -y dnsmasq && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -68,14 +73,13 @@ EXPOSE 3128 53/udp
 
 ENTRYPOINT ["/entrypoint.sh"]
 `
-	path := filepath.Join(projectDir, ".devcontainer", "proxy", "Dockerfile")
-	return os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(filepath.Join(proxyDir, "Dockerfile"), []byte(content), 0o644)
 }
 
 func GenerateProxyEntrypoint(projectDir string) error {
 	content := `#!/bin/sh
 dnsmasq --no-daemon --server=8.8.8.8 --server=8.8.4.4 --listen-address=0.0.0.0 --bind-interfaces &
-exec caddy run --config /etc/caddy/Caddyfile
+exec squid -N -f /etc/squid/squid.conf
 `
 	path := filepath.Join(projectDir, ".devcontainer", "proxy", "entrypoint.sh")
 	return os.WriteFile(path, []byte(content), 0o755)
@@ -141,13 +145,13 @@ func GenerateCompose(projectDir string, docker bool) error {
       context: proxy
       dockerfile: Dockerfile
     volumes:
-      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./proxy/squid.conf:/etc/squid/squid.conf:ro
     networks:
       restricted:
         ipv4_address: 172.28.0.10
       external:
     healthcheck:
-      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      test: ["CMD", "squid", "-k", "check", "-f", "/etc/squid/squid.conf"]
       interval: 10s
       timeout: 3s
       retries: 5
