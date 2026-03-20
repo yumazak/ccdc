@@ -170,7 +170,7 @@ RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && 
 RUN su - ccdc -c 'curl https://mise.run | sh'
 ENV PATH="/home/ccdc/.local/bin:${PATH}"
 COPY .mise.toml /home/ccdc/.config/mise/config.toml
-RUN chown -R ccdc:ccdc /home/ccdc/.config/mise
+RUN chown -R ccdc:ccdc /home/ccdc/.config
 RUN su - ccdc -c 'mise trust ~/.config/mise/config.toml && mise install'
 ENV PATH="/home/ccdc/.local/share/mise/shims:${PATH}"
 `)
