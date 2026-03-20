@@ -136,7 +136,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     sudo \
-    && rm -rf /var/lib/apt/lists/*
+    gpg \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 `)
 
 	if docker {
@@ -170,13 +174,6 @@ RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then sudo cp /etc/mitm
 # Allow ccdc to run update-ca-certificates without password
 RUN echo 'ccdc ALL=(ALL) NOPASSWD: /usr/sbin/update-ca-certificates, /usr/bin/cp' >> /etc/sudoers.d/ccdc
 
-# Git credential helper: use GITHUB_TOKEN for authentication
-RUN printf '#!/bin/sh\necho "username=x-access-token\npassword=$GITHUB_TOKEN"\n' > /usr/local/bin/git-credential-ccdc && \
-    chmod +x /usr/local/bin/git-credential-ccdc
-
-# Git config: include host gitconfig + credential helper
-RUN echo '[include]\n\tpath = /home/ccdc/.gitconfig.host\n[credential]\n\thelper = /usr/local/bin/git-credential-ccdc' > /home/ccdc/.gitconfig && \
-    chown ccdc:ccdc /home/ccdc/.gitconfig
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
@@ -266,13 +263,9 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-      - ~/.gitconfig:/home/ccdc/.gitconfig.host:ro
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GH_TOKEN=${GITHUB_TOKEN}
-      - NODE_AUTH_TOKEN=${GITHUB_TOKEN}
       - http_proxy=http://proxy:3128
       - https_proxy=http://proxy:3128
       - HTTP_PROXY=http://proxy:3128

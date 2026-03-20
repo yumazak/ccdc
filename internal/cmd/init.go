@@ -60,8 +60,6 @@ func printNextSteps(withDocker bool) {
 	step := 1
 	fmt.Printf("  %d. Edit .ccdc/proxy/enforcer.py to customize access rules\n", step)
 	step++
-	fmt.Printf("  %d. export GITHUB_TOKEN=$(gh auth token)\n", step)
-	step++
 	if withDocker {
 		fmt.Printf("  %d. Start your project services: docker compose up -d\n", step)
 		step++
@@ -69,6 +67,8 @@ func printNextSteps(withDocker bool) {
 	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml up -d --build\n", step)
 	step++
 	fmt.Printf("  %d. docker compose -f .ccdc/compose.yaml exec dev bash\n", step)
+	step++
+	fmt.Printf("  %d. gh auth login (first time only)\n", step)
 	step++
 	fmt.Printf("  %d. ccdc (alias for claude --dangerously-skip-permissions)\n", step)
 	if withDocker {
