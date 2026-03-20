@@ -34,9 +34,7 @@ func GenerateEnforcer(projectDir string) error {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
 
-	name := projectName(projectDir)
-
-	content := fmt.Sprintf(`"""
+	content := `"""
 ccdc network policy enforcer for mitmproxy
 Edit RULES to customize access control. Hot-reloads on save.
 """
@@ -53,11 +51,12 @@ from mitmproxy import http, ctx
 #   "/foo/*"  - prefix match (anything starting with /foo/)
 #   "/foo"    - exact match
 RULES = {
-    # GitHub - restrict push to this repo only
+    # GitHub - edit paths to restrict to your repo
+    # Example: {"method": "POST", "path": "/YourOrg/YourRepo.git/git-receive-pack"}
     "github.com": [
         {"method": "GET"},
-        {"method": "POST", "path": "/%s.git/git-upload-pack"},
-        {"method": "POST", "path": "/%s.git/git-receive-pack"},
+        {"method": "POST", "path": "/*/git-upload-pack"},
+        {"method": "POST", "path": "/*/git-receive-pack"},
     ],
     "api.github.com": [
         {"method": "GET"},
@@ -113,20 +112,9 @@ def request(flow: http.HTTPFlow):
 
     flow.response = http.Response.make(403, b"Blocked: method/path not allowed")
     ctx.log.warn(f"DENY {flow.request.method} {host}{flow.request.path}")
-`, name, name)
+`
 
 	return os.WriteFile(filepath.Join(proxyDir, "enforcer.py"), []byte(content), 0o644)
-}
-
-func GenerateProxyDockerfile(projectDir string) error {
-	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
-	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create proxy directory: %w", err)
-	}
-
-	content := `FROM mitmproxy/mitmproxy:latest
-`
-	return os.WriteFile(filepath.Join(proxyDir, "Dockerfile"), []byte(content), 0o644)
 }
 
 func GenerateDevDockerfile(projectDir string, docker bool, joy bool) error {
