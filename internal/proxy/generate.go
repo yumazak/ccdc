@@ -174,10 +174,15 @@ RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
     chmod +x /usr/local/bin/ccdc
 
 # Trust mitmproxy CA certificate at login
-RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then sudo cp /etc/mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates 2>/dev/null; git config --global http.sslCAInfo /etc/mitmproxy/mitmproxy-ca-cert.pem; fi' >> /home/ccdc/.bashrc
+RUN echo 'if [ -f /etc/mitmproxy/mitmproxy-ca-cert.pem ]; then sudo cp /etc/mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates 2>/dev/null; fi' >> /home/ccdc/.bashrc
 
 # Allow ccdc to run update-ca-certificates without password
 RUN echo 'ccdc ALL=(ALL) NOPASSWD: /usr/sbin/update-ca-certificates, /usr/bin/cp' >> /etc/sudoers.d/ccdc
+
+# Git credential helper: use GITHUB_TOKEN for authentication
+RUN printf '#!/bin/sh\necho "username=x-access-token\npassword=$GITHUB_TOKEN"\n' > /usr/local/bin/git-credential-ccdc && \
+    chmod +x /usr/local/bin/git-credential-ccdc && \
+    git config --system credential.helper /usr/local/bin/git-credential-ccdc
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
@@ -267,7 +272,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-      - ~/.gitconfig:/home/ccdc/.gitconfig:ro
+      - ~/.gitconfig:/etc/gitconfig:ro
       - mitmproxy-certs:/etc/mitmproxy:ro
     working_dir: %s
     environment:
