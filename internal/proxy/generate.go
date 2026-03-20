@@ -128,9 +128,9 @@ RUN useradd -m -s /bin/bash ccdc
 # Install Claude Code
 RUN su - ccdc -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
-# Create ccdc wrapper command
-RUN CLAUDE_BIN="/home/ccdc/.local/bin/claude" && \
-    printf '#!/bin/sh\nexec %s --dangerously-skip-permissions "$@"\n' "$CLAUDE_BIN" > /usr/local/bin/ccdc && \
+# Add claude to PATH and create ccdc wrapper
+RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
+    printf '#!/bin/sh\nexec /home/ccdc/.local/bin/claude --dangerously-skip-permissions "$@"\n' > /usr/local/bin/ccdc && \
     chmod +x /usr/local/bin/ccdc
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
