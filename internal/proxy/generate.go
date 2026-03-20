@@ -7,23 +7,6 @@ import (
 	"strings"
 )
 
-var defaultDomains = []string{
-	"github.com",
-	"api.github.com",
-	"raw.githubusercontent.com",
-	"registry.npmjs.org",
-	"npm.pkg.github.com",
-	"rubygems.org",
-	"bundler.io",
-	"pypi.org",
-	"files.pythonhosted.org",
-	"claude.ai",
-	"platform.claude.com",
-	"api.anthropic.com",
-	"statsig.anthropic.com",
-	"sentry.io",
-}
-
 func projectName(projectDir string) string {
 	return filepath.Base(projectDir)
 }
@@ -186,9 +169,10 @@ RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && 
 # Install mise and project tools
 RUN su - ccdc -c 'curl https://mise.run | sh'
 ENV PATH="/home/ccdc/.local/bin:${PATH}"
-COPY .mise.toml /home/ccdc/.mise.toml
-RUN chown ccdc:ccdc /home/ccdc/.mise.toml
-RUN su - ccdc -c 'mise trust ~/.mise.toml && mise install'
+COPY .mise.toml /home/ccdc/.config/mise/config.toml
+RUN chown -R ccdc:ccdc /home/ccdc/.config/mise
+RUN su - ccdc -c 'mise trust ~/.config/mise/config.toml && mise install'
+ENV PATH="/home/ccdc/.local/share/mise/shims:${PATH}"
 `)
 
 	if joy {
@@ -219,6 +203,17 @@ func GenerateMiseToml(projectDir string) error {
 # python = "3.12"
 `
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func buildNoProxy(withDocker bool, withJoy bool) string {
+	noProxy := "localhost,127.0.0.1,proxy"
+	if withDocker {
+		noProxy += ",socket-proxy"
+	}
+	if withJoy {
+		noProxy += ",joy-proxy"
+	}
+	return noProxy
 }
 
 func GenerateCompose(projectDir string, docker bool, joy bool) error {
@@ -301,12 +296,12 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - https_proxy=http://proxy:3128
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
-      - no_proxy=localhost,127.0.0.1,socket-proxy,proxy,joy-proxy
+      - no_proxy=%s
       - SSL_CERT_FILE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - NODE_EXTRA_CA_CERTS=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - REQUESTS_CA_BUNDLE=/etc/mitmproxy/mitmproxy-ca-cert.pem
       - GIT_SSL_CAINFO=/etc/mitmproxy/mitmproxy-ca-cert.pem
-`, "/"+name, "/"+name)
+`, "/"+name, "/"+name, buildNoProxy(docker, joy))
 
 	if docker {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
