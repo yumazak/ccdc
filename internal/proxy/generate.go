@@ -188,7 +188,7 @@ RUN su - ccdc -c 'curl https://mise.run | sh'
 ENV PATH="/home/ccdc/.local/bin:${PATH}"
 COPY .mise.toml /home/ccdc/.mise.toml
 RUN chown ccdc:ccdc /home/ccdc/.mise.toml
-RUN su - ccdc -c 'cd ~ && mise install'
+RUN su - ccdc -c 'mise trust ~/.mise.toml && mise install'
 `)
 
 	if joy {
