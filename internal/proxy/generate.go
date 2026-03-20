@@ -55,8 +55,8 @@ RULES = {
     # Example: {"method": "POST", "path": "/YourOrg/YourRepo.git/git-receive-pack"}
     "github.com": [
         {"method": "GET"},
-        {"method": "POST", "path": "/*/git-upload-pack"},
-        {"method": "POST", "path": "/*/git-receive-pack"},
+        {"method": "POST", "path": "/**/git-upload-pack"},
+        {"method": "POST", "path": "/**/git-receive-pack"},
     ],
     "api.github.com": [
         {"method": "GET"},
@@ -82,6 +82,10 @@ RULES = {
 
 
 def _match_path(pattern, path):
+    if "/**" in pattern:
+        prefix = pattern.split("/**")[0]
+        suffix = pattern.split("/**")[1]
+        return path.startswith(prefix) and path.endswith(suffix)
     if pattern.endswith("/*"):
         return path.startswith(pattern[:-1])
     return path == pattern
