@@ -24,8 +24,12 @@ var defaultDomains = []string{
 	"sentry.io",
 }
 
+func projectName(projectDir string) string {
+	return filepath.Base(projectDir)
+}
+
 func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error {
-	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
+	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
@@ -59,7 +63,7 @@ func GenerateCaddyfile(projectDir string, extraDomains []string, joy bool) error
 }
 
 func GenerateProxyDockerfile(projectDir string) error {
-	proxyDir := filepath.Join(projectDir, ".devcontainer", "proxy")
+	proxyDir := filepath.Join(projectDir, ".ccdc", "proxy")
 	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create proxy directory: %w", err)
 	}
@@ -87,15 +91,17 @@ func GenerateProxyEntrypoint(projectDir string) error {
 dnsmasq --no-daemon --server=8.8.8.8 --server=8.8.4.4 --listen-address=0.0.0.0 --bind-interfaces &
 exec caddy run --config /etc/caddy/Caddyfile
 `
-	path := filepath.Join(projectDir, ".devcontainer", "proxy", "entrypoint.sh")
+	path := filepath.Join(projectDir, ".ccdc", "proxy", "entrypoint.sh")
 	return os.WriteFile(path, []byte(content), 0o755)
 }
 
 func GenerateDevDockerfile(projectDir string, docker bool) error {
-	devDir := filepath.Join(projectDir, ".devcontainer", "dev")
+	devDir := filepath.Join(projectDir, ".ccdc", "dev")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create dev directory: %w", err)
 	}
+
+	name := projectName(projectDir)
 
 	var b strings.Builder
 	b.WriteString(`FROM ubuntu:24.04
@@ -135,15 +141,19 @@ RUN ln -s /home/ccdc/.local/bin/claude /usr/local/bin/claude && \
 
 # Copy /etc/claude/ to ~/.claude/ on bash login
 RUN echo 'mkdir -p ~/.claude && for item in /etc/claude/*; do [ -e "$item" ] && cp -r "$item" ~/.claude/$(basename "$item"); done' >> /home/ccdc/.bashrc
-
-WORKDIR /workspace
 `)
+
+	fmt.Fprintf(&b, "WORKDIR /%s\n", name)
 
 	return os.WriteFile(filepath.Join(devDir, "Dockerfile"), []byte(b.String()), 0o644)
 }
 
 func GenerateCompose(projectDir string, docker bool, joy bool) error {
+	name := projectName(projectDir)
+
 	var b strings.Builder
+
+	fmt.Fprintf(&b, "name: ccdc-%s\n\n", name)
 
 	b.WriteString(`services:
   proxy:
@@ -190,7 +200,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
 `)
 	}
 
-	b.WriteString(`
+	fmt.Fprintf(&b, `
   dev:
     build:
       context: dev
@@ -200,12 +210,12 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
     dns:
       - 172.28.0.10
     volumes:
-      - ..:/workspace
+      - ..:/`+"%s"+`
       - ~/.claude/skills:/etc/claude/skills:ro
       - ~/.claude/agents:/etc/claude/agents:ro
       - ~/.claude/commands:/etc/claude/commands:ro
       - ~/.claude/CLAUDE.md:/etc/claude/CLAUDE.md:ro
-    working_dir: /workspace
+    working_dir: /`+"%s"+`
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GH_TOKEN=${GITHUB_TOKEN}
@@ -215,7 +225,7 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - HTTP_PROXY=http://proxy:3128
       - HTTPS_PROXY=http://proxy:3128
       - no_proxy=localhost,127.0.0.1,socket-proxy,proxy
-`)
+`, name, name)
 
 	if docker {
 		b.WriteString("      - DOCKER_HOST=tcp://socket-proxy:2375\n")
@@ -241,6 +251,6 @@ networks:
     driver: bridge
 `)
 
-	path := filepath.Join(projectDir, ".devcontainer", "docker-compose.proxy.yml")
+	path := filepath.Join(projectDir, ".ccdc", "docker-compose.yml")
 	return os.WriteFile(path, []byte(b.String()), 0o644)
 }

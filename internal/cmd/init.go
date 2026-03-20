@@ -46,15 +46,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("Created .devcontainer/proxy/ (Caddy forward proxy + DNS)")
-	fmt.Println("Created .devcontainer/dev/ (Claude Code)")
+	fmt.Println("Created .ccdc/proxy/ (Caddy forward proxy + DNS)")
+	fmt.Println("Created .ccdc/dev/ (Claude Code)")
 	if dockerFlag {
 		fmt.Println("Created socket-proxy service (Docker access)")
 	}
 	if joyFlag {
 		fmt.Println("Created joy notification forwarding")
 	}
-	fmt.Println("Created .devcontainer/docker-compose.proxy.yml")
+	fmt.Println("Created .ccdc/docker-compose.yml")
 
 	printNextSteps(dockerFlag)
 	return nil
@@ -64,7 +64,7 @@ func printNextSteps(withDocker bool) {
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	step := 1
-	fmt.Printf("  %d. Edit .devcontainer/proxy/Caddyfile to add project-specific domains\n", step)
+	fmt.Printf("  %d. Edit .ccdc/proxy/Caddyfile to add project-specific domains\n", step)
 	step++
 	fmt.Printf("  %d. export GITHUB_TOKEN=$(gh auth token)\n", step)
 	step++
@@ -72,9 +72,9 @@ func printNextSteps(withDocker bool) {
 		fmt.Printf("  %d. Start your project services: docker compose up -d\n", step)
 		step++
 	}
-	fmt.Printf("  %d. docker compose -f .devcontainer/docker-compose.proxy.yml up -d --build\n", step)
+	fmt.Printf("  %d. docker compose -f .ccdc/docker-compose.yml up -d --build\n", step)
 	step++
-	fmt.Printf("  %d. docker compose -f .devcontainer/docker-compose.proxy.yml exec dev bash\n", step)
+	fmt.Printf("  %d. docker compose -f .ccdc/docker-compose.yml exec dev bash\n", step)
 	step++
 	fmt.Printf("  %d. ccdc (alias for claude --dangerously-skip-permissions)\n", step)
 	if withDocker {
