@@ -212,8 +212,8 @@ func GenerateCompose(projectDir string, docker bool, joy bool) error {
       - restricted
       - external
     healthcheck:
-      test: ["CMD", "curl", "-f", "-x", "http://localhost:3128", "http://example.com", "-o", "/dev/null"]
-      interval: 10s
+      test: ["CMD", "python3", "-c", "import urllib.request as u; u.urlopen(u.Request('http://localhost:3128'), timeout=3)"]
+      interval: 5s
       timeout: 3s
       retries: 10
 `)
